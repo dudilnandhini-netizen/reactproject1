@@ -72,7 +72,15 @@ function AppProvider({ children }) {
       };
     }
     
-    return stored;
+    // Normalize stored shape so older or malformed data won't break updates
+    return {
+      ...stored,
+      categoryLevels: stored.categoryLevels || defaultCategoryLevels,
+      categoryScores: stored.categoryScores || defaultCategoryScores,
+      history: Array.isArray(stored.history) ? stored.history : [],
+      completedQuizzes: typeof stored.completedQuizzes === 'number' ? stored.completedQuizzes : 0,
+      totalScore: typeof stored.totalScore === 'number' ? stored.totalScore : 0,
+    };
   });
 
   const [lastQuizScore, setLastQuizScore] = useState(() => {
@@ -198,7 +206,7 @@ function AppProvider({ children }) {
           ...prev.categoryScores,
           [category]: updatedCategoryScore,
         },
-        history: [historyEntry, ...prev.history].slice(0, 20),
+        history: [historyEntry, ...(Array.isArray(prev.history) ? prev.history : [])].slice(0, 20),
       };
     });
 
@@ -219,7 +227,7 @@ function AppProvider({ children }) {
     setInterviewProgress((prev) => ({
       ...prev,
       completedInterviews: prev.completedInterviews + 1,
-      history: [summary, ...prev.history].slice(0, 10),
+      history: [summary, ...(Array.isArray(prev.history) ? prev.history : [])].slice(0, 10),
     }));
   };
 

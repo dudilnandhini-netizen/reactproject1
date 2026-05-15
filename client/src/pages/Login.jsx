@@ -29,6 +29,16 @@ function Login() {
   const [loading, setLoading] =
     useState(false);
 
+  const [socialProvider, setSocialProvider] =
+    useState("");
+
+  const socialAccounts = {
+    google: [
+      { name: "Dudilnandhini", email: "dudilnandhini@gmail.com" },
+      { name: "Dudi Yashoda", email: "dudi.yashoda@gmail.com" },
+    ],
+  };
+
   useEffect(() => {
     if (isLoggedIn) {
       navigate("/dashboard");
@@ -65,6 +75,48 @@ function Login() {
         navigate("/dashboard");
       }, 100);
 
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const closeSocialLogin = () => {
+    setSocialProvider("");
+    setError("");
+  };
+
+  const handleSocialLogin = (provider) => {
+    setError("");
+    setSocialProvider(provider);
+  };
+
+  const handleSocialAccount = async (emailToUse) => {
+    setError("");
+    setLoading(true);
+
+    try {
+      if (!emailToUse) {
+        throw new Error("Please select an account to continue.");
+      }
+
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(emailToUse)) {
+        throw new Error("Please select a valid account email.");
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      const displayName = emailToUse.split("@")[0];
+      const providerPassword = `${socialProvider}-oauth-token`;
+
+      login(emailToUse, providerPassword, displayName);
+      setSocialProvider("");
+
+      setTimeout(() => {
+        navigate("/dashboard");
+      }, 100);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -202,16 +254,73 @@ function Login() {
               </div>
             </div>
 
-            <button style={styles.googleButton}>
+            <button
+              style={styles.googleButton}
+              onClick={() => handleSocialLogin("google")}
+              disabled={loading}
+            >
               <span style={styles.googleIcon}>G</span>
               Continue with Google
             </button>
-
-            <button style={styles.githubButton}>
-              <span style={styles.githubIcon}>🐙</span>
-              Continue with GitHub
-            </button>
           </div>
+
+          {socialProvider && (
+            <div style={styles.overlay}>
+              <div style={styles.providerModal}>
+                <div style={styles.providerModalHeader}>
+                  <span style={styles.providerIcon}>
+                    {socialProvider === "google" ? "G" : "🐙"}
+                  </span>
+                  <div>
+                    <h3 style={styles.providerTitle}>
+                      Continue with {socialProvider === "google" ? "Google" : "GitHub"}
+                    </h3>
+                    <p style={styles.providerSubtitle}>
+                      Authenticate with your {socialProvider === "google" ? "Google" : "GitHub"} account.
+                    </p>
+                  </div>
+                </div>
+
+                          <div style={styles.accountList}>
+                  {socialAccounts[socialProvider].map((account) => (
+                    <button
+                      key={account.email}
+                      style={styles.accountItem}
+                      onClick={() => handleSocialAccount(account.email)}
+                      disabled={loading}
+                    >
+                      <div style={styles.accountInfo}>
+                        <span style={styles.accountBadge}>
+                          {account.name.charAt(0).toUpperCase()}
+                        </span>
+                        <div>
+                          <div style={styles.accountName}>{account.name}</div>
+                          <div style={styles.accountEmail}>{account.email}</div>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+
+                {error && (
+                  <div style={styles.error}>
+                    <span style={styles.errorIcon}>⚠️</span>
+                    {error}
+                  </div>
+                )}
+
+                <div style={styles.providerActions}>
+                  <button
+                    style={styles.cancelButton}
+                    onClick={closeSocialLogin}
+                    disabled={loading}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div style={styles.footer}>
             <p style={styles.footerText}>
@@ -523,6 +632,132 @@ const styles = {
 
   githubIcon: {
     fontSize: "18px",
+  },
+
+  overlay: {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    background: "rgba(0, 0, 0, 0.65)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 50,
+    padding: "20px",
+  },
+
+  providerModal: {
+    width: "100%",
+    maxWidth: "420px",
+    background: "rgba(15, 23, 42, 0.98)",
+    border: "1px solid rgba(255, 255, 255, 0.12)",
+    borderRadius: "24px",
+    padding: "32px",
+    boxShadow: "0 25px 60px rgba(0, 0, 0, 0.35)",
+  },
+
+  providerModalHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: "18px",
+    marginBottom: "20px",
+  },
+
+  providerIcon: {
+    width: "46px",
+    height: "46px",
+    borderRadius: "14px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "24px",
+    color: "white",
+    background: "rgba(255, 255, 255, 0.1)",
+  },
+
+  providerTitle: {
+    margin: 0,
+    fontSize: "22px",
+    color: "white",
+  },
+
+  providerSubtitle: {
+    margin: "6px 0 0 0",
+    color: "#cbd5e1",
+    fontSize: "14px",
+  },
+
+  accountList: {
+    display: "grid",
+    gap: "12px",
+    marginTop: "20px",
+  },
+
+  accountItem: {
+    width: "100%",
+    padding: "16px",
+    background: "rgba(255, 255, 255, 0.08)",
+    border: "1px solid rgba(255, 255, 255, 0.14)",
+    borderRadius: "16px",
+    color: "white",
+    textAlign: "left",
+    cursor: "pointer",
+    transition: "transform 0.2s ease, background 0.2s ease",
+  },
+
+  accountItemHover: {
+    transform: "translateY(-1px)",
+    background: "rgba(255, 255, 255, 0.12)",
+  },
+
+  accountInfo: {
+    display: "flex",
+    alignItems: "center",
+    gap: "14px",
+  },
+
+  accountBadge: {
+    width: "40px",
+    height: "40px",
+    borderRadius: "12px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "rgba(59, 130, 246, 0.2)",
+    color: "#93c5fd",
+    fontWeight: "700",
+    fontSize: "18px",
+  },
+
+  accountName: {
+    fontSize: "16px",
+    fontWeight: "600",
+    margin: 0,
+  },
+
+  accountEmail: {
+    fontSize: "14px",
+    color: "#cbd5e1",
+    marginTop: "4px",
+  },
+
+  providerActions: {
+    display: "flex",
+    gap: "12px",
+    marginTop: "20px",
+    flexWrap: "wrap",
+  },
+
+  cancelButton: {
+    padding: "14px 20px",
+    background: "rgba(255, 255, 255, 0.08)",
+    border: "1px solid rgba(255, 255, 255, 0.16)",
+    borderRadius: "12px",
+    color: "white",
+    fontSize: "16px",
+    cursor: "pointer",
   },
 
   footer: {

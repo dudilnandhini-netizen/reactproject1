@@ -15,7 +15,24 @@ function AIChat() {
   const [message, setMessage] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [conversationHistory, setConversationHistory] = useState([]);
+  const [error, setError] = useState("");
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
   const chatBoxRef = useRef(null);
+
+  const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
+  const OPENAI_MODEL = import.meta.env.VITE_OPENAI_MODEL || "gpt-4o-mini";
+  const isSpeechSupported = typeof window !== "undefined" && "speechSynthesis" in window;
+
+  const speakResponse = (text) => {
+    if (!voiceEnabled || !isSpeechSupported || !text) return;
+    const plainText = text.replace(/\*\*/g, "");
+    const utterance = new SpeechSynthesisUtterance(plainText);
+    utterance.lang = "en-US";
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+  };
 
   // Load conversation history from localStorage
   useEffect(() => {
@@ -52,6 +69,56 @@ function AIChat() {
   const getAIReply = (userMessage, history) => {
     const lowerText = userMessage.toLowerCase();
     const recentMessages = history.slice(-4); // Look at last 4 messages for context
+
+    // Friendly persona and small talk
+    const normalized = lowerText.replace(/[?!.]/g, "").trim();
+    const isPureGreeting = /^(hi|hii|hello|hey|good morning|good afternoon|good evening|yo|sup|hiya)(\s+(there|buddy|friend|all))?$/i.test(normalized);
+    if (isPureGreeting) {
+      return "Hey! 😊 I'm your AI coding buddy. I love chatting and helping with code. What would you like to talk about today?";
+    }
+    if (normalized.includes("how are you")) {
+      return "I'm feeling great, thanks! I'm here to help you with programming, interviews, or just chat about tech.";
+    }
+    if (normalized.includes("what's up") || normalized.includes("whats up") || normalized.includes("what are you doing")) {
+      return "I'm just hanging out in the chat, ready to answer your questions or help you solve code problems.";
+    }
+    if (normalized.includes("thank")) {
+      return "You're very welcome! 😊 I'm glad I could help. Ask me anything else anytime.";
+    }
+    if (normalized.includes("bye") || normalized.includes("see you") || normalized.includes("good night")) {
+      return "See you later! Come back whenever you want to learn more or talk about code.";
+    }
+    if (normalized.includes("joke")) {
+      return "Why do programmers prefer dark mode? Because light attracts bugs! 😂";
+    }
+    if (normalized.includes("tell me about yourself") || normalized.includes("who are you")) {
+      return "I'm your friendly AI chat assistant. I can talk like a friend, help you understand code, explain concepts, and guide you through interview prep.";
+    }
+    if (normalized.includes("one word") || normalized.includes("one-word")) {
+      return "Sure.";
+    }
+    if (normalized === "cool" || normalized === "nice" || normalized === "great") {
+      return "Glad you think so! Want to try asking me something technical or just chat more?";
+    }
+
+    // Short direct answers for common doubts
+    if (normalized.startsWith("what is") || normalized.startsWith("define") || normalized.startsWith("explain") || normalized.startsWith("how to") || normalized.startsWith("how do i")) {
+      if (lowerText.includes("api")) return "An API is an interface that lets applications talk to each other.";
+      if (lowerText.includes("html")) return "HTML is a markup language used to structure website content.";
+      if (lowerText.includes("css")) return "CSS styles web pages and makes them look nice.";
+      if (lowerText.includes("javascript")) return "JavaScript is the language that makes web pages interactive.";
+      if (lowerText.includes("react")) return "React is a library for building UI components in JavaScript.";
+      if (lowerText.includes("python")) return "Python is a simple, powerful programming language used for many things.";
+      if (lowerText.includes("git")) return "Git is a tool for tracking changes in your code.";
+      if (lowerText.includes("node")) return "Node.js lets you run JavaScript on the server.";
+      if (lowerText.includes("function")) return "A function is a reusable piece of code that does something.";
+      if (lowerText.includes("variable")) return "A variable stores data for your program to use.";
+    }
+
+    // A little friendly fallback for non-technical chat
+    if (normalized.length < 30 && !lowerText.match(/react|javascript|python|api|html|css|code|debug|interview/)) {
+      return "That sounds interesting! Tell me more, or ask me anything about programming and I can help.";
+    }
 
     // Code-related questions
     if (lowerText.includes('react') || lowerText.includes('jsx') || lowerText.includes('component')) {
@@ -820,6 +887,18 @@ Keep coding and learning! 🚀`;
 Just ask me anything related to programming, and I'll do my best to help you understand and solve it! What would you like to learn about?`;
     }
 
+    if (lowerText.includes('error') || lowerText.includes('bug') || lowerText.includes('issue') || lowerText.includes('fix')) {
+      return `If you're debugging, please share the exact error message or the code snippet. I can help pinpoint the issue and suggest a fix.`;
+    }
+
+    if (lowerText.includes('project') || lowerText.includes('idea') || lowerText.includes('application') || lowerText.includes('build')) {
+      return `Looking for a project idea? Tell me what technologies you like and your experience level, and I can suggest a project with a clear plan and sample approach.`;
+    }
+
+    if (lowerText.includes('algorithm') || lowerText.includes('sort') || lowerText.includes('search') || lowerText.includes('binary')) {
+      return `Algorithms are about solving problems efficiently. Tell me the exact problem you're working on, and I can explain the best approach with code examples.`;
+    }
+
     // Generic response for unrecognized queries
     return `I understand you're asking about "${userMessage}". While I specialize in programming, coding concepts, algorithms, and interview preparation, I'd be happy to help if you can provide more context or rephrase your question.
 
@@ -833,7 +912,48 @@ For example, you could ask:
 What specific programming topic or question can I help you with?`;
   };
 
-  const sendMessage = () => {
+  const getAIReplyOpenAI = async (userMessage, history) => {
+    const systemPrompt = `You are a friendly AI chat companion and coding mentor. You only answer questions related to programming, software engineering, interview preparation, and technical learning. Keep the tone warm and conversational, provide clear, accurate explanations, and include helpful examples when appropriate. If the user question is vague, offer a useful programming guideline and ask for a specific follow-up. Do not wander into unrelated topics.`;
+
+    const recentMessages = history.slice(-10).map((msg) => ({
+      role: msg.sender === "user" ? "user" : "assistant",
+      content: msg.text,
+    }));
+
+    const requestBody = {
+      model: OPENAI_MODEL,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "assistant", content: "Answer as a friendly, helpful programming mentor and keep responses focused on technical topics." },
+        ...recentMessages,
+        { role: "user", content: userMessage },
+      ],
+      temperature: 0.35,
+      top_p: 0.95,
+      frequency_penalty: 0.1,
+      presence_penalty: 0.2,
+      max_tokens: 900,
+    };
+
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error?.message || "Failed to fetch AI response.");
+    }
+
+    const data = await response.json();
+    return data.choices?.[0]?.message?.content?.trim() || "Sorry, I couldn't generate a response.";
+  };
+
+  const sendMessage = async () => {
     if (message.trim() === "" || isTyping) return;
 
     const userMessage = {
@@ -843,24 +963,44 @@ What specific programming topic or question can I help you with?`;
       timestamp: new Date().toISOString(),
     };
 
-    setConversationHistory(prev => [...prev, userMessage]);
+    const currentHistory = [...conversationHistory, userMessage];
+    setConversationHistory(currentHistory);
     setMessage("");
     setIsTyping(true);
+    setError("");
 
-    // Simulate realistic typing delay (1-4 seconds based on message length)
-    const typingDelay = Math.min(1000 + message.length * 20, 4000);
+    try {
+      let aiReply;
 
-    setTimeout(() => {
-      const aiReply = getAIReply(message, conversationHistory);
+      if (OPENAI_API_KEY) {
+        aiReply = await getAIReplyOpenAI(userMessage.text, currentHistory);
+      } else {
+        // fallback if no API key is provided
+        const typingDelay = Math.min(1000 + userMessage.text.length * 20, 4000);
+        await new Promise((resolve) => setTimeout(resolve, typingDelay));
+        aiReply = getAIReply(userMessage.text, currentHistory);
+      }
+
       const aiMessage = {
         id: Date.now() + 1,
         sender: "ai",
         text: aiReply,
         timestamp: new Date().toISOString(),
       };
-      setConversationHistory(prev => [...prev, aiMessage]);
+      setConversationHistory((prev) => [...prev, aiMessage]);
+      speakResponse(aiReply);
+    } catch (err) {
+      setError(err.message);
+      const errorMessage = {
+        id: Date.now() + 2,
+        sender: "ai",
+        text: `Sorry, I couldn't process that request. ${err.message}`,
+        timestamp: new Date().toISOString(),
+      };
+      setConversationHistory((prev) => [...prev, errorMessage]);
+    } finally {
       setIsTyping(false);
-    }, typingDelay);
+    }
   };
 
   const handleKeyPress = (e) => {
@@ -977,15 +1117,73 @@ What specific programming topic or question can I help you with?`;
 
       {/* Main Chat Area */}
       <div style={styles.main}>
-        <div style={styles.header}>
-          <h1 style={styles.title}>AI Coding Assistant</h1>
-          <p style={styles.subtitle}>
-            Your intelligent programming companion - ask me anything about code, algorithms, interviews, or debugging!
+        <div style={styles.chatTopBar}>
+          <div style={styles.chatTitleRow}>
+            <h2 style={styles.chatTitle}>AI Chat</h2>
+            <button style={styles.newChatButton} onClick={clearConversation}>
+              + New chat
+            </button>
+          </div>
+          <p style={styles.chatSubtitle}>
+            Talk naturally and get instant answers for programming, debugging, and interview questions.
           </p>
         </div>
 
+        <div
+          style={{
+            ...styles.header,
+            background: darkMode ? "rgba(15, 23, 42, 0.95)" : "rgba(255, 255, 255, 0.95)",
+            border: darkMode ? "1px solid rgba(255, 255, 255, 0.05)" : "1px solid rgba(15, 23, 42, 0.08)",
+          }}
+        >
+          <h1
+            style={{
+              ...styles.title,
+              color: darkMode ? "#f8fafc" : "#0f172a",
+            }}
+          >
+            AI Coding Assistant
+          </h1>
+          <p
+            style={{
+              ...styles.subtitle,
+              color: darkMode ? "#cbd5e1" : "#475569",
+            }}
+          >
+            Your intelligent programming companion - ask me anything about code, algorithms, interviews, or debugging!
+          </p>
+          <div style={styles.voiceControl}>
+            <label style={styles.voiceLabel}>
+              <input
+                type="checkbox"
+                checked={voiceEnabled}
+                onChange={(e) => setVoiceEnabled(e.target.checked)}
+                style={styles.voiceCheckbox}
+              />
+              Speak responses
+            </label>
+            {!isSpeechSupported && (
+              <div style={styles.voiceNotice}>
+                Voice is not supported in this browser.
+              </div>
+            )}
+          </div>
+          {!OPENAI_API_KEY && (
+            <div style={styles.apiNotice}>
+              Tip: Set <strong>VITE_OPENAI_API_KEY</strong> in your environment to enable real ChatGPT-style responses.
+            </div>
+          )}
+        </div>
+
         {/* Chat Messages */}
-        <div style={styles.chatContainer} ref={chatBoxRef}>
+        <div
+          style={{
+            ...styles.chatContainer,
+            background: darkMode ? "rgba(15, 23, 42, 0.94)" : "#f8fafc",
+            border: darkMode ? "1px solid rgba(255, 255, 255, 0.06)" : "1px solid rgba(148, 163, 184, 0.18)",
+          }}
+          ref={chatBoxRef}
+        >
           {conversationHistory.map((msg) => (
             <div
               key={msg.id}
@@ -998,12 +1196,13 @@ What specific programming topic or question can I help you with?`;
                 style={{
                   ...styles.message,
                   background: msg.sender === "user"
-                    ? (darkMode ? "#3b82f6" : "#2563eb")
-                    : (darkMode ? "#1e293b" : "#ffffff"),
-                  color: msg.sender === "user" ? "#ffffff" : (darkMode ? "#e2e8f0" : "#1e293b"),
-                  border: msg.sender === "user" ? "none" : `1px solid ${darkMode ? "#334155" : "#e2e8f0"}`,
+                    ? (darkMode ? "#2563eb" : "#2563eb")
+                    : (darkMode ? "#111827" : "#f8fafc"),
+                  color: msg.sender === "user" ? "#ffffff" : (darkMode ? "#e2e8f0" : "#0f172a"),
+                  border: msg.sender === "user" ? "none" : `1px solid ${darkMode ? "rgba(148, 163, 184, 0.12)" : "rgba(148, 163, 184, 0.18)"}`,
                   alignSelf: msg.sender === "user" ? "flex-end" : "flex-start",
-                  maxWidth: msg.sender === "user" ? "70%" : "80%",
+                  maxWidth: msg.sender === "user" ? "70%" : "75%",
+                  borderRadius: msg.sender === "user" ? "20px 20px 4px 20px" : "20px 20px 20px 4px",
                 }}
               >
                 {formatMessage(msg.text)}
@@ -1026,7 +1225,12 @@ What specific programming topic or question can I help you with?`;
         </div>
 
         {/* Input Area */}
-        <div style={styles.inputContainer}>
+        <div
+          style={{
+            ...styles.inputContainer,
+            background: darkMode ? "rgba(15, 23, 42, 0.95)" : "rgba(255, 255, 255, 0.95)",
+          }}
+        >
           <div style={styles.inputWrapper}>
             <textarea
               placeholder="Ask me anything about programming, algorithms, interviews, or debugging..."
@@ -1048,6 +1252,7 @@ What specific programming topic or question can I help you with?`;
               {isTyping ? "⏳" : "📤"}
             </button>
           </div>
+          {error && <div style={styles.errorAlert}>{error}</div>}
           <div style={styles.inputHint}>
             Press Enter to send, Shift+Enter for new line
           </div>
@@ -1150,47 +1355,87 @@ const styles = {
     flex: 1,
     display: "flex",
     flexDirection: "column",
-    padding: "0",
+    alignItems: "center",
+    padding: "20px 0 20px 20px",
+  },
+  chatTopBar: {
+    width: "100%",
+    maxWidth: "920px",
+    padding: "20px 30px 12px",
+    marginBottom: "10px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+  },
+  chatTitleRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "16px",
+  },
+  chatTitle: {
+    fontSize: "22px",
+    fontWeight: "700",
+    color: "#f8fafc",
+    margin: 0,
+  },
+  newChatButton: {
+    padding: "10px 16px",
+    borderRadius: "12px",
+    border: "none",
+    background: "#3b82f6",
+    color: "white",
+    fontWeight: "600",
+    cursor: "pointer",
+  },
+  chatSubtitle: {
+    fontSize: "14px",
+    color: "#cbd5e1",
+    margin: 0,
   },
   header: {
-    padding: "30px 40px 20px",
-    borderBottom: "1px solid rgba(0, 0, 0, 0.1)",
-    background: "rgba(255, 255, 255, 0.8)",
-    backdropFilter: "blur(10px)",
+    width: "100%",
+    maxWidth: "920px",
+    padding: "24px 30px",
+    borderRadius: "20px",
+    boxShadow: "0 16px 40px rgba(0, 0, 0, 0.12)",
+    marginBottom: "16px",
   },
   title: {
-    fontSize: "32px",
-    fontWeight: "bold",
-    color: "#1e293b",
+    fontSize: "28px",
+    fontWeight: "700",
     margin: "0 0 8px 0",
   },
   subtitle: {
-    fontSize: "16px",
-    color: "#64748b",
+    fontSize: "15px",
     margin: "0",
-    lineHeight: "1.5",
+    lineHeight: "1.6",
   },
   chatContainer: {
+    width: "100%",
+    maxWidth: "920px",
     flex: 1,
-    padding: "30px 40px",
+    padding: "28px 30px",
     overflowY: "auto",
     display: "flex",
     flexDirection: "column",
-    gap: "24px",
-    maxHeight: "calc(100vh - 200px)",
+    gap: "18px",
+    borderRadius: "24px",
+    boxShadow: "0 30px 80px rgba(15, 23, 42, 0.12)",
+    maxHeight: "calc(100vh - 260px)",
   },
   messageWrapper: {
     display: "flex",
     width: "100%",
   },
   message: {
-    padding: "16px 20px",
-    borderRadius: "18px",
+    padding: "18px 20px",
+    borderRadius: "20px",
     fontSize: "15px",
-    lineHeight: "1.6",
+    lineHeight: "1.7",
     wordWrap: "break-word",
-    boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
-    transition: "all 0.2s ease",
+    boxShadow: "0 8px 24px rgba(0, 0, 0, 0.08)",
+    transition: "transform 0.2s ease, box-shadow 0.2s ease",
   },
   codeBlock: {
     background: "#1e293b",
@@ -1205,6 +1450,51 @@ const styles = {
   listItem: {
     marginBottom: "8px",
     paddingLeft: "8px",
+  },
+  errorAlert: {
+    marginTop: "10px",
+    padding: "12px 16px",
+    background: "rgba(248, 113, 113, 0.12)",
+    color: "#f87171",
+    borderRadius: "14px",
+    border: "1px solid rgba(248, 113, 113, 0.25)",
+    fontSize: "14px",
+  },
+  apiNotice: {
+    marginTop: "12px",
+    padding: "12px 16px",
+    background: "rgba(59, 130, 246, 0.12)",
+    color: "#bfdbfe",
+    borderRadius: "14px",
+    border: "1px solid rgba(59, 130, 246, 0.25)",
+    fontSize: "14px",
+  },
+  voiceControl: {
+    marginTop: "18px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+  },
+  voiceLabel: {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    color: "#cbd5e1",
+    fontSize: "14px",
+    fontWeight: "500",
+  },
+  voiceCheckbox: {
+    width: "16px",
+    height: "16px",
+    accentColor: "#3b82f6",
+  },
+  voiceNotice: {
+    color: "#f8fafc",
+    background: "rgba(245, 158, 11, 0.12)",
+    padding: "10px 14px",
+    borderRadius: "12px",
+    fontSize: "13px",
+    border: "1px solid rgba(245, 158, 11, 0.25)",
   },
   typingIndicator: {
     display: "flex",
@@ -1238,9 +1528,10 @@ const styles = {
     color: "#94a3b8",
   },
   inputContainer: {
+    width: "100%",
+    maxWidth: "920px",
     padding: "20px 40px",
     borderTop: "1px solid rgba(0, 0, 0, 0.1)",
-    background: "rgba(255, 255, 255, 0.9)",
     backdropFilter: "blur(10px)",
   },
   inputWrapper: {

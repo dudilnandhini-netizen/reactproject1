@@ -138,9 +138,24 @@ function Quiz() {
     );
   }
 
-  const currentQuestion = quizQuestions[currentQuestionIndex];
+  const safeQuestionIndex = Math.min(
+    Math.max(currentQuestionIndex, 0),
+    Math.max(quizQuestions.length - 1, 0)
+  );
+  const currentQuestion = quizQuestions[safeQuestionIndex] || null;
   const finalPercentage = quizQuestions.length ? Math.round((score / quizQuestions.length) * 100) : 0;
   const passedQuiz = finalPercentage >= 70;
+  const displayQuestionCount = quizFinished ? quizQuestions.length : currentQuestionIndex + 1;
+  const displayDifficulty = currentQuestion?.difficulty || "Unknown";
+
+  if (!currentQuestion && !quizFinished) {
+    return (
+      <div style={styles.loadingContainer}>
+        <div style={styles.loadingSpinner}></div>
+        <p style={styles.loadingText}>Loading quiz results...</p>
+      </div>
+    );
+  }
 
   return (
     <div style={styles.container}>
@@ -156,12 +171,12 @@ function Quiz() {
           </h1>
           <div style={styles.quizMeta}>
             <span style={styles.difficulty}>
-              Difficulty: <span style={{ color: getDifficultyColor(currentQuestion.difficulty) }}>
-                {currentQuestion.difficulty}
+              Difficulty: <span style={{ color: getDifficultyColor(displayDifficulty) }}>
+                {displayDifficulty}
               </span>
             </span>
             <span style={styles.questionCount}>
-              Question {currentQuestionIndex + 1} of {quizQuestions.length}
+              Question {displayQuestionCount} of {quizQuestions.length}
             </span>
           </div>
         </div>
